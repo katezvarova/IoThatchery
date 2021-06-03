@@ -3,9 +3,10 @@ from datetime import datetime
 from datetime import date
 import time
 import json
-import paho.mqtt.client as mqtt
 from time import sleep
 import RPi.GPIO as GPIO
+import logging
+from tb_device_mqtt import TBDeviceMqttClient, TBPublishInfo
 
 #Fan
 PIN1=17
@@ -23,19 +24,28 @@ PIN7=23
 SPEED=0.1
 PWM_FREQ=25
 
+value=False;
 
-iot_hub="localhost";
-port=1883;
-#Thingsboard access token
-username="ZCRkH2vwKbRkbszfBel3";
-topic="v1/devices/me/telemetry";
+def on_server_side_rpc_request(client, request_id, request_body):
+    #print(request_id, request_body)
+    if request_body["method"] == "setValue":
+        client.send_rpc_reply(request_id, value)
+        light_state=request_body['params'];
+        print(light_state);
+        if(str(light_state) == 'True'):
+            print('zapnute')
+            GPIO.output(PIN3,GPIO.LOW);
+        else:
+            print('vypnute')
+            GPIO.output(PIN3,GPIO.HIGH);
 
-client=mqtt.Client();
-client.username_pw_set(username);
-client.connect(iot_hub,port);
+client = TBDeviceMqttClient("localhost", "fYNYPvueVL6WLw69BWEv")
+client.set_server_side_rpc_request_handler(on_server_side_rpc_request)
+client.connect()
 time.sleep(1);
+
 print("Connection success");
-time.sleep(5.0);
+time.sleep(2.5);
 
 GPIO.setwarnings(False);
 GPIO.setmode(GPIO.BCM);
@@ -67,36 +77,36 @@ while True:
     print(dt_string);
     print ("Temperature : {:.1f} ".format(temperature));
     print ("Humidity: {:.0f}".format(humidity));
-    print();
     
-    if(temperature>35):
-        GPIO.output(PIN2,GPIO.HIGH)
-        print("Svietime")
-        GPIO.output(PIN3,GPIO.LOW)
+    if(temperature>37.8):
+        GPIO.output(PIN2,GPIO.HIGH);
+        print("Svietime");
+        print();
+        #GPIO.output(PIN3,GPIO.LOW);
     else:
-        GPIO.output(PIN2,GPIO.LOW)
-        print("Kurime")
-        GPIO.output(PIN3,GPIO.HIGH)
-        
-        
-    print("Temp: {:.1f} C    Humidity: {}% ".format(temperature, humidity))
-            
-    sensor_data["temperature"] = "{:.1f}".format(temperature);
-    sensor_data["humidity"] = "{:.0f}".format(humidity);
-    
-    sensor_data["min_temperature"] = "37.25";
-    sensor_data["max_temperature"] = "38.3";
-    sensor_data["min_humidity"] = "60";
-    sensor_data["max_humidity"] = "80";
-    
-    data=json.dumps(sensor_data);
-    client.publish(topic,data,0);
+        print("Kurime");
+        print();
+        #GPIO.output(PIN3,GPIO.HIGH);
      
+    temp = "{:.1f}".format(temperature);
+    humi = "{:.0f}".format(humidity);     
+    max_temp = 37;
+    min_temp = 38;
+    min_humi = 60;
+    max_humi= 80;
+    
+    data={"temperature": temp, "humidity": humi,
+          "min_temperature" : min_temp, "max_temperature":max_temp,
+          "min_humidity" : min_humi, "max_humidity":max_humi}
+    client.send_telemetry(data);
+    #print(data);
+    
     data = ("{0} , {1} , {2} \n".format(temperature, humidity, now));
     
     f=open("data.txt","a");
     f.write(data);
     f.close();
+    
     '''
     except RuntimeError as error:
         print(error.args[0]);
@@ -106,3 +116,4 @@ while True:
         time.sleep(5.0);
         continue'''
     time.sleep(5.0);
+
